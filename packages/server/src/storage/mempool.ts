@@ -54,7 +54,14 @@ export class MempoolStorage {
 	      (hash, raw_tx, from_address, to_address, nonce, gas_price,
 	       max_fee_per_gas, max_priority_fee_per_gas, gas_limit, value, data,
 	       chain_id, tx_type, status, created_at)
-	      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+	      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+	      ON CONFLICT(hash) DO UPDATE SET
+	       status = 'pending',
+	       deleted_at = NULL,
+	       dropped_at = NULL,
+	       drop_reason = NULL,
+	       forwarded_at = NULL,
+	       created_at = excluded.created_at`,
 		);
 		await stmt
 			.bind(

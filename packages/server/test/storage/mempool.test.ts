@@ -88,6 +88,62 @@ describe('MempoolStorage', () => {
 			expect(retrieved!.to).toBeNull();
 			expect(retrieved!.data).toBe('0x6080604052...');
 		});
+
+		it('revives a discarded (hidden) transaction on resubmit instead of throwing', async () => {
+			const tx = {
+				hash: '0x1111111111111111111111111111111111111111111111111111111111111111' as Hash,
+				rawTx: '0x02f86c...' as Hex,
+				from: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' as Address,
+				to: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc' as Address,
+				nonce: 5,
+				gasPrice: parseGwei('10'),
+				gasLimit: 21000n,
+				value: 0n,
+				data: null,
+				chainId: 31337,
+				txType: 'legacy' as const,
+			};
+
+			await storage.addTransaction(tx);
+			// User discards it in the UI (soft delete)
+			await storage.hideTransaction(tx.hash);
+			expect(await storage.getTransaction(tx.hash)).toBeNull();
+
+			// Client resubmits the exact same raw tx (same hash): must not throw,
+			// and should revive the row back to visible + pending.
+			await expect(storage.addTransaction(tx)).resolves.toBeUndefined();
+
+			const revived = await storage.getTransaction(tx.hash);
+			expect(revived).not.toBeNull();
+			expect(revived!.status).toBe('pending');
+			expect(revived!.deletedAt).toBeUndefined();
+		});
+
+		it('revives a dropped transaction on resubmit and clears drop metadata', async () => {
+			const tx = {
+				hash: '0x2222222222222222222222222222222222222222222222222222222222222222' as Hash,
+				rawTx: '0x02f86c...' as Hex,
+				from: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' as Address,
+				to: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc' as Address,
+				nonce: 6,
+				gasPrice: parseGwei('10'),
+				gasLimit: 21000n,
+				value: 0n,
+				data: null,
+				chainId: 31337,
+				txType: 'legacy' as const,
+			};
+
+			await storage.addTransaction(tx);
+			await storage.updateStatus(tx.hash, 'dropped', 'Manually dropped');
+
+			await expect(storage.addTransaction(tx)).resolves.toBeUndefined();
+
+			const revived = await storage.getTransaction(tx.hash);
+			expect(revived!.status).toBe('pending');
+			expect(revived!.droppedAt).toBeUndefined();
+			expect(revived!.dropReason).toBeUndefined();
+		});
 	});
 
 	describe('getTransaction', () => {
